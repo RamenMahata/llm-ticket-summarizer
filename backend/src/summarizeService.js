@@ -10,7 +10,7 @@ export function createSummarizeService({
     model = DEFAULT_MODEL,
 } = {}) {
     return {
-        async summarize(messages) {
+        async chat(messages) {
             const response = await client.models.generateContent({
                 model,
                 contents: messages,

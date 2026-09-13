@@ -11,7 +11,7 @@ async function readResponse(response) {
 }
 
 export async function sendMessage(message) {
-  const response = await fetch(`${API_BASE_URL}/api/summarize`, {
+  const response = await fetch(`${API_BASE_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
     body: message,

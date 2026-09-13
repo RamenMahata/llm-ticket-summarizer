@@ -4,8 +4,8 @@ import express from "express";
 import cors from "cors";
 
 export function createApp({summarizeService}) {
-    if(!summarizeService?.summarize) {
-        throw new Error("summarizeService is required and must have a summarize method");
+    if(!summarizeService?.chat) {
+        throw new Error("summarizeService is required and must have a chat  method");
     } 
 
     const app = express();
@@ -21,7 +21,7 @@ export function createApp({summarizeService}) {
     app.use(cors());
       app.use(express.text({type: "*/*", limit: "100kb"})); // Middleware to parse incoming text/plain requests 
     
-    app.post("/api/summarize", async (request, response,next) => {
+    app.post("/api/chat", async (request, response,next) => {
       if(typeof request.body !== "string" || request.body.trim() === "") {
         return response
           .status(400)
@@ -43,7 +43,7 @@ export function createApp({summarizeService}) {
             },
           ];
 
-          const summary = await summarizeService.summarize(messages);
+          const summary = await summarizeService.chat(messages);
 
           history.push({role: "user", content: request.body});
           history.push({role: "assistant", content: summary});
