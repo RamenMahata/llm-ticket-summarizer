@@ -244,6 +244,8 @@ VITE_API_URL=http://localhost:8080
 
 The conversation history is held in backend memory. It is shared by clients connected to the same running server and is cleared whenever the backend restarts.
 
+Assistant responses are rendered as safe GitHub-Flavored Markdown in the chat. Headings, lists, tables, links, blockquotes, inline code, and fenced code blocks are supported. User messages remain plain text, and raw HTML from assistant responses is not rendered.
+
 To create a production frontend build:
 
 ```bash

@@ -37,6 +37,8 @@ test("summarize sends the expected prompt and model to Gemini", async () => {
   assert.equal(request.model, "test-model");
   assert.deepEqual(request.contents, messages);
   assert.match(request.config.systemInstruction, /blunt but caring friend/);
+  assert.match(request.config.systemInstruction, /clean GitHub-Flavored Markdown/);
+  assert.match(request.config.systemInstruction, /fenced code blocks/);
 });
 
 test("summarize throws when Gemini returns an empty response", async () => {
