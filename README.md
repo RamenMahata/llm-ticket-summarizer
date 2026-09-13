@@ -68,7 +68,7 @@ The application is organized into separate layers.
 
 ### API Layer
 
-`src/app.js`
+`backend/src/app.js`
 
 Responsible for:
 
@@ -81,7 +81,7 @@ Responsible for:
 
 ### Service Layer
 
-`src/summarizeService.js`
+`backend/src/summarizeService.js`
 
 Responsible for:
 
@@ -93,7 +93,7 @@ Responsible for:
 
 ### Server Layer
 
-`src/server.js`
+`backend/src/server.js`
 
 Responsible for:
 
@@ -123,19 +123,27 @@ Responsible for:
 ```text
 llm-ticket-summarizer/
 │
-├── src/
-│   ├── app.js
-│   ├── server.js
-│   └── summarizeService.js
+├── backend/
+│   ├── src/
+│   │   ├── app.js
+│   │   ├── server.js
+│   │   └── summarizeService.js
+│   ├── test/
+│   │   ├── app.test.js
+│   │   └── summarizeService.test.js
+│   ├── package.json
+│   └── package-lock.json
+│   └── .env
+├── frontend/
+│   ├── index.html
+│   ├── package.json
+│   └── src/
+│       ├── api.js
+│       ├── App.jsx
+│       ├── main.jsx
+│       └── styles.css
 │
-├── test/
-│   ├── app.test.js
-│   └── summarizeService.test.js
-│
-├── .env
 ├── .gitignore
-├── package.json
-├── package-lock.json
 └── README.md
 ```
 
@@ -157,15 +165,16 @@ git clone https://github.com/YOUR_USERNAME/llm-ticket-summarizer.git
 cd llm-ticket-summarizer
 ```
 
-### 3. Install dependencies
+### 3. Install backend dependencies
 
 ```bash
+cd backend
 npm install
 ```
 
-### 4. Configure the environment
+### 4. Configure the backend environment
 
-Create a `.env` file in the project root:
+Create a `.env` file in the `backend/` directory:
 
 ```env
 GEMINI_API_KEY=your_api_key_here
@@ -204,21 +213,44 @@ node_modules/
 
 ## Running the application
 
-Start the server with:
+Start the backend from the `backend/` directory:
 
 ```bash
-node src/server.js
+cd backend
+npm run dev
 ```
 
-The application will start on the configured port.
+The backend starts on the configured port, or `http://localhost:8080` by default.
 
-By default:
+In a second terminal, install and start the React frontend from the project root:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the Vite URL shown in the terminal, usually:
 
 ```text
-http://localhost:8080
+http://localhost:5173
 ```
 
-You can then use Postman or another HTTP client to send requests to the API.
+The frontend is a chat client for the multi-turn support conversation. It uses `http://localhost:8080` as its default API URL. To use another backend URL, create `frontend/.env` with:
+
+```env
+VITE_API_URL=http://localhost:8080
+```
+
+The conversation history is held in backend memory. It is shared by clients connected to the same running server and is cleared whenever the backend restarts.
+
+To create a production frontend build:
+
+```bash
+cd frontend
+npm run build
+npm run preview
+```
 
 ---
 
@@ -226,9 +258,10 @@ You can then use Postman or another HTTP client to send requests to the API.
 
 The project uses the Node.js built-in test runner and Supertest.
 
-Run all tests with:
+Run the backend tests from the `backend/` directory:
 
 ```bash
+cd backend
 npm test
 ```
 

@@ -23,15 +23,20 @@ test("summarize sends the expected prompt and model to Gemini", async () => {
     model: "test-model",
   });
 
-  const result = await service.summarize("Printer is offline.");
+  const messages = [
+    {
+      role: "user",
+      parts: [{text: "Printer is offline."}],
+    },
+  ];
+
+  const result = await service.summarize(messages);
 
   assert.equal(result, "Line one.\nLine two.");
 
-  assert.deepEqual(request, {
-  model: "test-model",
-  contents:
-    "Summarize the following ticket in a concise manner:\n\nPrinter is offline.",
-});
+  assert.equal(request.model, "test-model");
+  assert.deepEqual(request.contents, messages);
+  assert.match(request.config.systemInstruction, /blunt but caring friend/);
 });
 
 test("summarize throws when Gemini returns an empty response", async () => {

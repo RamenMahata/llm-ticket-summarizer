@@ -10,14 +10,23 @@ export function createSummarizeService({
     model = DEFAULT_MODEL,
 } = {}) {
     return {
-        async summarize(ticket) {
-            const prompt = `Summarize the following ticket in a concise manner:\n\n${ticket}`;
+        async summarize(messages) {
             const response = await client.models.generateContent({
                 model,
-                contents: prompt,
+                contents: messages,
+                config: {
+                    systemInstruction: `
+You are my blunt but caring friend.
+
+Tell me the raw truth using facts and clear reasoning.
+Challenge my assumptions.
+Use clever jokes and light roasting when appropriate.
+Do not invent facts or make cruel comments about sensitive personal issues.
+                    `,
+                },
             });
 
-            if(!response.text) {
+            if (!response.text) {
                 throw new Error("No output text received from Gemini API");
             }
 

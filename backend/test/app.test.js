@@ -5,8 +5,13 @@ import request from "supertest";
 import { createApp } from "../src/app.js";
 
 const service = {
-  summarize: async (ticket) => {
-    assert.equal(ticket, "The checkout page returns a 500 error.");
+  summarize: async (messages) => {
+    assert.deepEqual(messages, [
+      {
+        role: "user",
+        parts: [{text: "The checkout page returns a 500 error."}],
+      },
+    ]);
 
     return "Checkout is failing with a server error.\nThe issue blocks purchases.";
   },
@@ -79,6 +84,66 @@ test("POST /api/summarize returns 500 when summarization fails", async () => {
 
   assert.equal(
     response.text,
-    "An error occurred while summarizing the ticket.",
+    "Internal Server Error",
   );
+});
+
+test("POST /api/summarize includes previous messages in the next request", async () => {
+  const requests = [];
+  const app = createApp({
+    summarizeService: {
+      summarize: async (messages) => {
+        requests.push(messages);
+        return `Reply ${requests.length}`;
+      },
+    },
+  });
+
+  await request(app)
+    .post("/api/summarize")
+    .type("text/plain")
+    .send("My name is Alex.");
+
+  await request(app)
+    .post("/api/summarize")
+    .type("text/plain")
+    .send("What is my name?");
+
+  assert.deepEqual(requests[1], [
+    {
+      role: "user",
+      parts: [{text: "My name is Alex."}],
+    },
+    {
+      role: "model",
+      parts: [{text: "Reply 1"}],
+    },
+    {
+      role: "user",
+      parts: [{text: "What is my name?"}],
+    },
+  ]);
+});
+
+test("DELETE /api/history clears conversation history", async () => {
+  const app = createApp({
+    summarizeService: {
+      summarize: async () => "Reply",
+    },
+  });
+
+  await request(app)
+    .post("/api/summarize")
+    .type("text/plain")
+    .send("Remember this message.");
+
+  const response = await request(app)
+    .delete("/api/history");
+
+  assert.equal(response.status, 204);
+
+  const historyResponse = await request(app)
+    .get("/api/history");
+
+  assert.deepEqual(historyResponse.body, []);
 });
