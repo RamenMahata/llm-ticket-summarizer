@@ -3,17 +3,16 @@ import test from "node:test";
 
 import { createSummarizeService } from "../src/summarizeService.js";
 
-test("summarize sends the expected prompt and model to Gemini", async () => {
+test("streamChat yields Gemini text chunks in order", async () => {
   let request;
 
   const client = {
     models: {
-      generateContent: async (input) => {
+      generateContentStream: async function* (input) {
         request = input;
-
-        return {
-          text: "Line one.\nLine two.",
-        };
+        yield {text: "Line one."};
+        yield {text: ""};
+        yield {text: "\nLine two."};
       },
     },
   };
@@ -30,10 +29,12 @@ test("summarize sends the expected prompt and model to Gemini", async () => {
     },
   ];
 
-  const result = await service.summarize(messages);
+  const result = [];
+  for await (const chunk of service.streamChat(messages)) {
+    result.push(chunk);
+  }
 
-  assert.equal(result, "Line one.\nLine two.");
-
+  assert.deepEqual(result, ["Line one.", "\nLine two."]);
   assert.equal(request.model, "test-model");
   assert.deepEqual(request.contents, messages);
   assert.match(request.config.systemInstruction, /blunt but caring friend/);
@@ -41,13 +42,11 @@ test("summarize sends the expected prompt and model to Gemini", async () => {
   assert.match(request.config.systemInstruction, /fenced code blocks/);
 });
 
-test("summarize throws when Gemini returns an empty response", async () => {
+test("streamChat throws when Gemini returns an empty response", async () => {
   const client = {
     models: {
-      generateContent: async () => {
-        return {
-          text: "",
-        };
+      generateContentStream: async function* () {
+        yield {text: ""};
       },
     },
   };
@@ -58,7 +57,10 @@ test("summarize throws when Gemini returns an empty response", async () => {
   });
 
   await assert.rejects(
-    () => service.summarize("Printer is offline."),
+    async () => {
+      for await (const _chunk of service.streamChat("Printer is offline.")) {
+      }
+    },
     {
         message: "No output text received from Gemini API",
     },

@@ -4,46 +4,57 @@ import request from "supertest";
 
 import { createApp } from "../src/app.js";
 
-const service = {
-  summarize: async (messages) => {
-    assert.deepEqual(messages, [
-      {
-        role: "user",
-        parts: [{text: "The checkout page returns a 500 error."}],
+function parseEvents(text) {
+  return text
+    .trim()
+    .split("\n\n")
+    .map((event) => event.replace(/^data: /, ""));
+}
+
+test("POST /api/chat streams generated deltas and completes", async () => {
+  let receivedMessages;
+  const app = createApp({
+    summarizeService: {
+      async *streamChat(messages) {
+        receivedMessages = messages;
+        yield "Checkout is failing";
+        yield " with a server error.";
       },
-    ]);
+    },
+  });
 
-    return "Checkout is failing with a server error.\nThe issue blocks purchases.";
-  },
-};
-
-const app = createApp({
-    summarizeService: service,
-});
-
-test("POST /api/summarize returns the generated plain-text summary", async () => {
   const response = await request(app)
-    .post("/api/summarize")
+    .post("/api/chat")
     .type("text/plain")
     .send("The checkout page returns a 500 error.");
 
   assert.equal(response.status, 200);
+  assert.match(response.headers["content-type"], /^text\/event-stream/);
+  assert.deepEqual(receivedMessages, [
+    {
+      role: "user",
+      parts: [{text: "The checkout page returns a 500 error."}],
+    },
+  ]);
 
-  assert.match(
-    response.headers["content-type"],
-    /^text\/plain/,
-  );
+  const events = parseEvents(response.text);
+  assert.deepEqual(events.slice(0, 2).map(JSON.parse), [
+    {choices: [{delta: {content: "Checkout is failing"}}]},
+    {choices: [{delta: {content: " with a server error."}}]},
+  ]);
+  assert.equal(events[2], "[DONE]");
 
-  assert.equal(
-    response.text,
-    "Checkout is failing with a server error.\nThe issue blocks purchases.",
-  );
+  const history = await request(app).get("/api/history");
+  assert.deepEqual(history.body, [
+    {role: "user", content: "The checkout page returns a 500 error."},
+    {role: "assistant", content: "Checkout is failing with a server error."},
+  ]);
 });
 
-test("POST /api/summarize rejects an empty ticket", async () => {
+test("POST /api/chat rejects an empty ticket before streaming", async () => {
   const service = {
-    summarize: async () => {
-      throw new Error("summarize should not be called");
+    streamChat: async function* () {
+      throw new Error("streamChat should not be called");
     },
   };
 
@@ -52,7 +63,7 @@ test("POST /api/summarize rejects an empty ticket", async () => {
   });
 
   const response = await request(app)
-    .post("/api/summarize")
+    .post("/api/chat")
     .type("text/plain")
     .send("   ");
 
@@ -64,9 +75,10 @@ test("POST /api/summarize rejects an empty ticket", async () => {
   );
 });
 
-test("POST /api/summarize returns 500 when summarization fails", async () => {
+test("POST /api/chat does not commit history when streaming fails", async () => {
   const service = {
-    summarize: async () => {
+    async *streamChat() {
+      yield "Partial response";
       throw new Error("LLM service failed");
     },
   };
@@ -76,36 +88,37 @@ test("POST /api/summarize returns 500 when summarization fails", async () => {
   });
 
   const response = await request(app)
-    .post("/api/summarize")
+    .post("/api/chat")
     .type("text/plain")
     .send("The payment service is failing.");
 
-  assert.equal(response.status, 500);
+  assert.equal(response.status, 200);
+  assert.deepEqual(parseEvents(response.text).map(JSON.parse), [
+    {choices: [{delta: {content: "Partial response"}}]},
+  ]);
 
-  assert.equal(
-    response.text,
-    "Internal Server Error",
-  );
+  const historyResponse = await request(app).get("/api/history");
+  assert.deepEqual(historyResponse.body, []);
 });
 
-test("POST /api/summarize includes previous messages in the next request", async () => {
+test("POST /api/chat includes previous messages in the next request", async () => {
   const requests = [];
   const app = createApp({
     summarizeService: {
-      summarize: async (messages) => {
+      async *streamChat(messages) {
         requests.push(messages);
-        return `Reply ${requests.length}`;
+        yield `Reply ${requests.length}`;
       },
     },
   });
 
   await request(app)
-    .post("/api/summarize")
+    .post("/api/chat")
     .type("text/plain")
     .send("My name is Alex.");
 
   await request(app)
-    .post("/api/summarize")
+    .post("/api/chat")
     .type("text/plain")
     .send("What is my name?");
 
@@ -128,12 +141,14 @@ test("POST /api/summarize includes previous messages in the next request", async
 test("DELETE /api/history clears conversation history", async () => {
   const app = createApp({
     summarizeService: {
-      summarize: async () => "Reply",
+      async *streamChat() {
+        yield "Reply";
+      },
     },
   });
 
   await request(app)
-    .post("/api/summarize")
+    .post("/api/chat")
     .type("text/plain")
     .send("Remember this message.");
 

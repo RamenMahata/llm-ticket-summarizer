@@ -13,7 +13,7 @@ The application provides an HTTP API that accepts a customer support ticket and 
 ```text
 Client / Postman
        ↓
-POST /api/summarize
+       POST /api/chat
        ↓
 Express API
        ↓
@@ -269,17 +269,18 @@ npm test
 
 The test suite verifies:
 
-* Successful ticket summarization
+* Successful streamed chat responses
 * Empty ticket validation
-* LLM/service failure handling
+* Failed-stream history handling
 * Correct Gemini model and prompt construction
+* Ordered Gemini stream chunks
 * Empty Gemini response handling
 
 Expected result:
 
 ```text
-tests 5
-pass 5
+tests 7
+pass 7
 fail 0
 ```
 
@@ -289,16 +290,16 @@ The LLM API itself is not called during service tests. A fake Gemini client is u
 
 ## API Endpoint
 
-### `POST /api/summarize`
+### `POST /api/chat`
 
-Accepts a customer support ticket as plain text and returns an LLM-generated summary.
+Accepts a customer support ticket as plain text and returns an LLM-generated response as a Server-Sent Events stream.
 
 ### Request
 
 **URL:**
 
 ```text
-POST http://localhost:8080/api/summarize
+POST http://localhost:8080/api/chat
 ```
 
 **Content-Type:**
@@ -315,16 +316,22 @@ The checkout page returns a 500 error whenever customers try to complete their p
 
 ### Response
 
-**Status:**
-
-```text
-200 OK
-```
-
 **Content-Type:**
 
 ```text
-text/plain
+text/event-stream
+```
+
+Each response chunk is sent as an SSE `data` event with an OpenAI-shaped delta:
+
+```json
+{"choices":[{"delta":{"content":"Checkout is failing"}}]}
+```
+
+The stream ends with:
+
+```text
+data: [DONE]
 ```
 
 ---
@@ -334,7 +341,7 @@ text/plain
 Using `curl`:
 
 ```bash
-curl -X POST http://localhost:8080/api/summarize \
+curl -N -X POST http://localhost:8080/api/chat \
   -H "Content-Type: text/plain" \
   -d "The checkout page returns a 500 error whenever customers try to complete their purchase. The issue started after the latest deployment and is currently preventing customers from completing orders."
 ```
@@ -343,11 +350,14 @@ You can also send the same request using Postman.
 
 ---
 
-## Example Response
+## Example Stream
 
 ```text
-Checkout is failing with a server error.
-The issue is preventing customers from completing purchases.
+data: {"choices":[{"delta":{"content":"Checkout is failing"}}]}
+
+data: {"choices":[{"delta":{"content":" with a server error."}}]}
+
+data: [DONE]
 ```
 
 The exact wording of the generated summary may vary because it is produced by the LLM.
@@ -375,16 +385,16 @@ Ticket content is required.
 If the summarization service fails:
 
 ```text
-HTTP 500
+HTTP 500 before streaming begins
 ```
 
 Response:
 
 ```text
-An error occurred while summarizing the ticket.
+Internal Server Error
 ```
 
-Internal errors are logged by the server while a controlled message is returned to the client.
+If a failure happens after streaming begins, the connection is closed and the partial response is not added to conversation history. Internal errors are logged by the server.
 
 ---
 
@@ -393,6 +403,7 @@ Internal errors are logged by the server while a controlled message is returned 
 This project demonstrates several practical software engineering concepts:
 
 * REST API development
+* Server-Sent Events streaming
 * Express middleware
 * Input validation
 * Service-layer separation

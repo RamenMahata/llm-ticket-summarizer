@@ -50,6 +50,7 @@ function TypingMessage() {
 export default function App() {
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState([]);
+  const [pendingAssistant, setPendingAssistant] = useState(null);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [sending, setSending] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -110,7 +111,7 @@ export default function App() {
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
     }
-  }, [messages, sending]);
+  }, [messages, pendingAssistant, sending]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -123,17 +124,25 @@ export default function App() {
 
     const previousMessages = messages;
     setMessages((currentMessages) => [...currentMessages, { role: "user", content: trimmedDraft }]);
+    setPendingAssistant("");
     setSending(true);
     setError("");
 
     try {
-      const response = await sendMessage(trimmedDraft);
-      setMessages([...previousMessages, { role: "user", content: trimmedDraft }, { role: "assistant", content: response }]);
+      const response = await sendMessage(trimmedDraft, (delta) => {
+        setPendingAssistant((currentContent) => currentContent + delta);
+      });
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        { role: "assistant", content: response },
+      ]);
+      setPendingAssistant(null);
       setConnection("connected");
       setDraft("");
       await loadHistory(false);
     } catch (submitError) {
       setMessages(previousMessages);
+      setPendingAssistant(null);
       setConnection("offline");
       setError(submitError.message || "Kindling could not answer right now. Please try again.");
     } finally {
@@ -236,7 +245,16 @@ export default function App() {
               <Message key={`${message.role}-${index}`} message={message} onCopy={handleCopy} />
             ))
           )}
-          {sending && <TypingMessage />}
+          {pendingAssistant !== null && (
+            pendingAssistant ? (
+              <Message
+                message={{role: "assistant", content: pendingAssistant}}
+                onCopy={handleCopy}
+              />
+            ) : (
+              <TypingMessage />
+            )
+          )}
         </div>
 
         <form className="chat-composer" onSubmit={handleSubmit}>

@@ -4,8 +4,8 @@ import express from "express";
 import cors from "cors";
 
 export function createApp({summarizeService}) {
-    if(!summarizeService?.chat) {
-        throw new Error("summarizeService is required and must have a chat  method");
+  if(!summarizeService?.streamChat) {
+    throw new Error("summarizeService is required and must have a streamChat method");
     } 
 
     const app = express();
@@ -19,7 +19,7 @@ export function createApp({summarizeService}) {
     }
 
     app.use(cors());
-      app.use(express.text({type: "*/*", limit: "100kb"})); // Middleware to parse incoming text/plain requests 
+    app.use(express.text({type: "*/*", limit: "100kb"})); // Middleware to parse incoming text/plain requests 
     
     app.post("/api/chat", async (request, response,next) => {
       if(typeof request.body !== "string" || request.body.trim() === "") {
@@ -31,7 +31,7 @@ export function createApp({summarizeService}) {
       }
 
       try {
-        const answer = await useHistory(async () => {
+        await useHistory(async () => {
           const messages = [
             ...history.map((message) => ({
               role: message.role === "assistant" ? "model" : "user",
@@ -43,15 +43,40 @@ export function createApp({summarizeService}) {
             },
           ];
 
-          const summary = await summarizeService.chat(messages);
+          response.type("text/event-stream");
+          response.set("Cache-Control", "no-cache");
+          response.set("Connection", "keep-alive");
+          response.flushHeaders();
+
+          let fullResponse = "";
+          for await (const chunk of summarizeService.streamChat(messages)) {
+            if (response.destroyed || response.writableEnded) {
+              throw new Error("Client disconnected before the response completed");
+            }
+
+            fullResponse += chunk;
+            response.write(`data: ${JSON.stringify({
+              choices: [{delta: {content: chunk}}],
+            })}\n\n`);
+          }
+
+          if (response.destroyed || response.writableEnded) {
+            throw new Error("Client disconnected before the response completed");
+          }
+
+          response.write("data: [DONE]\n\n");
 
           history.push({role: "user", content: request.body});
-          history.push({role: "assistant", content: summary});
-          return summary;
+          history.push({role: "assistant", content: fullResponse});
+          response.end();
         });
 
-        response.type("text/plain").send(answer);
       } catch (error) {
+        if (response.headersSent) {
+          response.end();
+          return;
+        }
+
         next(error); // Pass the error to the error-handling middleware
       }
     });
@@ -75,6 +100,10 @@ export function createApp({summarizeService}) {
     // Error-handling middleware
     app.use((err, _req, res, _next) => {
       console.error(err.stack); // Log the error stack trace for debugging
+      if (res.headersSent) {
+        return res.end();
+      }
+
       res.status(500).type("text/plain").send("Internal Server Error"); // Send a generic error message
     });
 
